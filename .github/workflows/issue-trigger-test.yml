@@ -1,0 +1,22 @@
+name: Issue trigger test
+on:
+  issues:
+    types: [opened]
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write proof to output branch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git checkout --orphan action-output
+          git rm -rf .
+          mkdir -p status
+          echo "issue ${{ github.event.issue.number }} triggered at $(date -u +%FT%TZ)" > status/proof.txt
+          git add status/proof.txt
+          git commit -m "Action trigger proof"
+          git push --force origin action-output
