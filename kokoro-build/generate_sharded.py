@@ -14,7 +14,11 @@ import soundfile as sf
 from kokoro import KPipeline
 
 ROOT = Path(__file__).resolve().parent
-ITEMS = json.loads(zlib.decompress(base64.b64decode((ROOT / 'texts.zlib.b64').read_bytes())))
+ENCODED_TEXTS = ''.join(
+    path.read_text(encoding='ascii').strip()
+    for path in sorted(ROOT.glob('texts.part*'))
+)
+ITEMS = json.loads(zlib.decompress(base64.b64decode(ENCODED_TEXTS)))
 OUT = ROOT / 'out'
 OUT.mkdir(exist_ok=True)
 SHARD = int(os.getenv('SHARD_INDEX', '0'))
