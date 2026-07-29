@@ -1,2 +1,3 @@
 Generate the complete Kokoro English audio set for the 48-week work-English mini program.
 Build requested: 2026-07-29.
+Trigger revision: 2, verified chunk manifest.
