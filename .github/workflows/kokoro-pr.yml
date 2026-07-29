@@ -1,0 +1,44 @@
+name: Build Kokoro course audio
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: kokoro-build/requirements.txt
+      - run: sudo apt-get update && sudo apt-get install -y espeak-ng ffmpeg
+      - run: python -m pip install --upgrade pip && pip install -r kokoro-build/requirements.txt
+      - name: Generate Kokoro audio
+        env:
+          KOKORO_VOICE: af_heart
+          SHARD_INDEX: ${{ matrix.shard }}
+          SHARD_TOTAL: 4
+        run: python kokoro-build/generate_sharded.py
+      - name: Verify files
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=list(Path('kokoro-build/out').glob('*.mp3'))
+          assert p and max(x.stat().st_size for x in p)<200*1024
+          print(len(p), max(x.stat().st_size for x in p))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kokoro-audio-shard-${{ matrix.shard }}
+          path: kokoro-build/out/
+          compression-level: 6
+          retention-days: 7
