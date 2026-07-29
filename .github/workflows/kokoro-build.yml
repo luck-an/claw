@@ -1,0 +1,58 @@
+name: Build Kokoro English Audio
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - kokoro-trigger.txt
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    name: Generate shard ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: kokoro-build/requirements.txt
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg espeak-ng libespeak-ng1
+
+      - name: Install Python packages
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r kokoro-build/requirements.txt
+
+      - name: Generate audio
+        env:
+          SHARD_INDEX: ${{ matrix.shard }}
+          SHARD_TOTAL: 8
+          KOKORO_VOICE: af_heart
+        run: python kokoro-build/generate_sharded.py
+
+      - name: Upload audio shard
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kokoro-audio-shard-${{ matrix.shard }}
+          path: kokoro-build/out/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
