@@ -1,0 +1,104 @@
+name: Full Kokoro work-English audio build
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  BUILD_ISSUE_TITLE: "[KOKORO_BUILD] Generate full audio"
+
+jobs:
+  generate:
+    if: github.event.issue.title == '[KOKORO_BUILD] Generate full audio'
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: Report run start
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: gh issue comment "$ISSUE_NUMBER" --repo "${{ github.repository }}" --body "RUN_ID=${GITHUB_RUN_ID} STATUS=STARTED"
+
+      - name: Checkout complete build inputs
+        uses: actions/checkout@v4
+        with:
+          ref: kokoro-audio-run-20260729-v2
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: kokoro-build/requirements.txt
+
+      - name: Install system audio tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y espeak-ng ffmpeg
+
+      - name: Install Kokoro
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r kokoro-build/requirements.txt
+
+      - name: Generate 517 texts at two speeds
+        env:
+          KOKORO_VOICE: af_heart
+          SHARD_INDEX: '0'
+          SHARD_TOTAL: '1'
+          HF_HOME: ${{ runner.temp }}/huggingface
+        run: python kokoro-build/generate_sharded.py
+
+      - name: Verify audio pack
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          folder = Path('kokoro-build/out')
+          files = sorted(folder.glob('*.mp3'))
+          if len(files) != 1034:
+              raise SystemExit(f'Expected 1034 MP3 files, found {len(files)}')
+          sizes = [p.stat().st_size for p in files]
+          if max(sizes) >= 200 * 1024:
+              raise SystemExit(f'Largest file is {max(sizes)} bytes')
+          failures = json.loads((folder / 'failures-0.json').read_text(encoding='utf-8'))
+          if failures:
+              raise SystemExit(f'{len(failures)} synthesis failures')
+          report = {
+              'voice': 'af_heart',
+              'normal_speed': 1.0,
+              'slow_speed': 0.85,
+              'unique_texts': 517,
+              'mp3_files': len(files),
+              'max_bytes': max(sizes),
+              'total_bytes': sum(sizes),
+          }
+          (folder / 'BUILD_REPORT.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
+          print(report)
+          PY
+
+      - name: Upload complete Kokoro audio artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kokoro-work-english-full-audio
+          path: kokoro-build/out/
+          compression-level: 6
+          retention-days: 7
+
+      - name: Report completion
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: gh issue comment "$ISSUE_NUMBER" --repo "${{ github.repository }}" --body "RUN_ID=${GITHUB_RUN_ID} STATUS=COMPLETED"
+
+      - name: Report failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: gh issue comment "$ISSUE_NUMBER" --repo "${{ github.repository }}" --body "RUN_ID=${GITHUB_RUN_ID} STATUS=FAILED"
